@@ -1,10 +1,11 @@
 from fastapi import FastAPI, Path
 import httpx
+import asyncio
 
 app = FastAPI(
     title="AstraScout Crypto API",
     description="""
-A lightweight crypto price + utility API built step-by-step 🚀  
+A professional multi-source crypto price + utility API 🚀  
 
 ---
 
@@ -18,17 +19,20 @@ BTC, ETH, SOL, BNB, XRP, ADA, DOGE, MATIC, DOT, LINK
 
 ---
 
-Built and maintained by **AstraScout** ⚡  
-Ideal for testing, bots, dashboards, education & experiments.
+Powered by:
+- CoinGecko (primary)
+- Binance (fallback)
+- CryptoCompare (fallback)
+
+Built & maintained by **AstraScout** ⚡  
 """,
-    version="1.4.2",
+    version="1.5.0",
 )
 
 # ============================================================
-# TOKEN CONFIG (with fallback IDs)
+# TOKEN MAPS
 # ============================================================
 
-# Fallback IDs separated by comma if needed
 COINGECKO_IDS = {
     "BTC": "bitcoin",
     "ETH": "ethereum",
@@ -58,6 +62,12 @@ COINGECKO_IDS = {
     "AAVE": "aave",
 }
 
+# Binance symbol mapping (TokenUSDT)
+BINANCE_SYMBOLS = {
+    symbol: symbol + "USDT"
+    for symbol in COINGECKO_IDS.keys()
+}
+
 UTILITY_SCORES = {
     "BTC": {"utility_score": 95, "summary": "Global store of value and settlement asset."},
     "ETH": {"utility_score": 100, "summary": "Smart contract leader powering DeFi & NFTs."},
@@ -65,127 +75,182 @@ UTILITY_SCORES = {
     "BNB": {"utility_score": 85, "summary": "Exchange chain with massive retail usage."},
     "XRP": {"utility_score": 75, "summary": "Used for fast cross-border settlement."},
     "ADA": {"utility_score": 60, "summary": "Research-driven chain with slower adoption."},
-    "DOGE": {"utility_score": 30, "summary": "High meme power but limited real utility."},
-    "MATIC": {"utility_score": 80, "summary": "Scaling chain used in many real dApps."},
+    "DOGE": {"utility_score": 30, "summary": "High meme utility, limited functional use."},
+    "MATIC": {"utility_score": 80, "summary": "Scaling chain with strong real usage."},
     "DOT": {"utility_score": 78, "summary": "Interoperability-focused ecosystem."},
-    "LINK": {"utility_score": 90, "summary": "Leading oracle system connecting real-world data."},
+    "LINK": {"utility_score": 90, "summary": "Leading oracle system feeding real-world data."},
 }
 
 # ============================================================
-# ROOT
+# PRICE FETCHERS
 # ============================================================
 
-@app.get("/", tags=["General"], summary="API status & overview")
+async def fetch_from_coingecko(symbol: str):
+    """Try multiple fallback CoinGecko IDs"""
+    ids = COINGECKO_IDS[symbol].split(",")
+
+    async with httpx.AsyncClient() as client:
+        for cid in ids:
+            url = f"https://api.coingecko.com/api/v3/simple/price?ids={cid}&vs_currencies=usd"
+            try:
+                r = await client.get(url, timeout=5)
+                data = r.json()
+                if cid in data and "usd" in data[cid]:
+                    return data[cid]["usd"], "coingecko"
+            except:
+                continue
+    return None, None
+
+
+async def fetch_from_binance(symbol: str):
+    """Use Binance global ticker"""
+    binance_symbol = BINANCE_SYMBOLS.get(symbol)
+
+    if not binance_symbol:
+        return None, None
+
+    url = f"https://api.binance.com/api/v3/ticker/price?symbol={binance_symbol}"
+
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(url, timeout=5)
+            data = r.json()
+
+            if "price" in data:
+                return float(data["price"]), "binance"
+
+    except:
+        return None, None
+
+    return None, None
+
+
+async def fetch_from_cryptocompare(symbol: str):
+    url = f"https://min-api.cryptocompare.com/data/price?fsym={symbol}&tsyms=USD"
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(url, timeout=5)
+            data = r.json()
+
+            if "USD" in data:
+                return float(data["USD"]), "cryptocompare"
+
+    except:
+        return None, None
+
+    return None, None
+
+
+# ============================================================
+# PRICE AGGREGATOR (3-SOURCE)
+# ============================================================
+
+async def get_price_multi_source(symbol: str):
+    """Try CoinGecko → Binance → CryptoCompare"""
+
+    # 1️⃣ CoinGecko
+    price, source = await fetch_from_coingecko(symbol)
+    if price is not None:
+        return price, source
+
+    # 2️⃣ Binance
+    price, source = await fetch_from_binance(symbol)
+    if price is not None:
+        return price, source
+
+    # 3️⃣ CryptoCompare
+    price, source = await fetch_from_cryptocompare(symbol)
+    if price is not None:
+        return price, source
+
+    return None, None  # all failed
+
+
+# ============================================================
+# ENDPOINTS
+# ============================================================
+
+@app.get("/", tags=["General"])
 def root():
     return {
         "message": "AstraScout Crypto API Online 🚀",
+        "status": "online",
+        "supported_price_tokens": list(COINGECKO_IDS.keys()),
+        "supported_utility_tokens": list(UTILITY_SCORES.keys()),
         "endpoints": {
-            "hello": "/hello/{name}",
             "price_single": "/price/{symbol}",
             "price_all": "/price/all",
             "utility_single": "/utility-score/{symbol}",
             "supported_price": "/supported/price",
             "supported_utility": "/supported/utility",
         },
-        "tokens_supported_price": list(COINGECKO_IDS.keys()),
-        "tokens_supported_utility": list(UTILITY_SCORES.keys()),
-        "status": "online",
     }
 
-# ============================================================
-# SUPPORTED TOKENS ENDPOINTS
-# ============================================================
 
-@app.get("/supported/price", tags=["General"], summary="List all supported price tokens")
-def supported_price_tokens():
-    return {"supported_price_tokens": list(COINGECKO_IDS.keys())}
-
-@app.get("/supported/utility", tags=["General"], summary="List all supported utility tokens")
-def supported_utility_tokens():
-    return {"supported_utility_tokens": list(UTILITY_SCORES.keys())}
-
-# ============================================================
-# HELLO
-# ============================================================
-
-@app.get("/hello/{name}", tags=["General"], summary="Say hello")
+@app.get("/hello/{name}", tags=["General"])
 def say_hello(name: str):
     return {"message": f"Hello {name}! 👋", "api": "AstraScout Crypto API"}
 
+
+@app.get("/supported/price", tags=["General"])
+def supported_price_tokens():
+    return {"supported_price_tokens": list(COINGECKO_IDS.keys())}
+
+
+@app.get("/supported/utility", tags=["General"])
+def supported_utility_tokens():
+    return {"supported_utility_tokens": list(UTILITY_SCORES.keys())}
+
+
 # ============================================================
-# UTILITY SCORE ENDPOINT
+# UTILITY SCORE
 # ============================================================
 
-@app.get("/utility-score/{symbol}", tags=["Utility"], summary="Get utility score for a token")
+@app.get("/utility-score/{symbol}", tags=["Utility"])
 def get_utility_score(symbol: str):
     sym = symbol.upper()
-
     if sym in UTILITY_SCORES:
-        data = UTILITY_SCORES[sym]
-        return {"token": sym, "utility_score": data["utility_score"], "summary": data["summary"]}
+        return {
+            "token": sym,
+            "utility_score": UTILITY_SCORES[sym]["utility_score"],
+            "summary": UTILITY_SCORES[sym]["summary"],
+        }
+    return {"token": sym, "utility_score": 50, "summary": "Unknown token."}
 
-    return {"token": sym, "utility_score": 50, "summary": "Unknown token — no utility data available."}
-
-# ============================================================
-# PRICE ALL — with fallback support
-# ============================================================
-
-@app.get("/price/all", tags=["Prices"], summary="Get USD prices for all supported tokens")
-async def get_all_prices():
-
-    # Collect all fallback IDs in one list
-    all_ids = []
-    for cid in COINGECKO_IDS.values():
-        all_ids.extend(cid.split(","))
-
-    ids_str = ",".join(all_ids)
-
-    url = f"https://api.coingecko.com/api/v3/simple/price?ids={ids_str}&vs_currencies=usd"
-
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(url, timeout=10)
-            data = resp.json()
-    except Exception as e:
-        return {"error": f"Failed to fetch prices: {e}"}
-
-    result = {}
-    for sym, cids in COINGECKO_IDS.items():
-        for cid in cids.split(","):
-            if cid in data and "usd" in data[cid]:
-                result[sym] = {"price_usd": data[cid]["usd"]}
-                break
-        else:
-            result[sym] = {"price_usd": None}
-
-    return result
 
 # ============================================================
-# PRICE SINGLE — with fallback support
+# PRICE — SINGLE TOKEN
 # ============================================================
 
-@app.get("/price/{symbol}", tags=["Prices"], summary="Get USD price for a single token")
-async def get_price(
-    symbol: str = Path(..., regex=r"^[A-Za-z0-9]{2,10}$"),
+@app.get("/price/{symbol}", tags=["Prices"])
+async def price_single(
+    symbol: str = Path(..., regex=r"^[A-Za-z0-9]{2,10}$")
 ):
     sym = symbol.upper()
 
     if sym not in COINGECKO_IDS:
         return {"error": f"Token '{sym}' not supported."}
 
-    candidate_ids = COINGECKO_IDS[sym].split(",")
+    price, source = await get_price_multi_source(sym)
 
-    for cid in candidate_ids:
-        url = f"https://api.coingecko.com/api/v3/simple/price?ids={cid}&vs_currencies=usd"
-        try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(url, timeout=10)
-                data = resp.json()
+    return {"token": sym, "price_usd": price, "source": source}
 
-            if cid in data and "usd" in data[cid]:
-                return {"token": sym, "price_usd": data[cid]["usd"]}
 
-        except:
-            continue
+# ============================================================
+# PRICE — ALL TOKENS
+# ============================================================
 
-    return {"token": sym, "price_usd": None}
+@app.get("/price/all", tags=["Prices"])
+async def price_all():
+    results = {}
+
+    tasks = {
+        symbol: asyncio.create_task(get_price_multi_source(symbol))
+        for symbol in COINGECKO_IDS.keys()
+    }
+
+    for symbol, task in tasks.items():
+        price, source = await task
+        results[symbol] = {"price_usd": price, "source": source}
+
+    return results
