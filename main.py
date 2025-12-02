@@ -8,12 +8,12 @@ A lightweight crypto price + utility API built step-by-step 🚀
 
 ---
 
-### 🔥 Supported Price Tokens
+### 🔥 Supported Price Tokens (26)
 BTC, ETH, SOL, BNB, XRP, ADA, DOGE, MATIC, DOT, LINK,  
 TRX, ATOM, AVAX, LTC, ETC, UNI, APT, ARB, OP,  
 FTM, NEAR, XLM, ICP, FIL, EGLD, AAVE  
 
-### 🔵 Supported Utility Tokens  
+### 🔵 Supported Utility Tokens (10)
 BTC, ETH, SOL, BNB, XRP, ADA, DOGE, MATIC, DOT, LINK  
 
 ---
@@ -21,9 +21,8 @@ BTC, ETH, SOL, BNB, XRP, ADA, DOGE, MATIC, DOT, LINK
 Built and maintained by **AstraScout** ⚡  
 Ideal for testing, bots, dashboards, education & experiments.
 """,
-    version="1.4.0",
+    version="1.4.1",
 )
-
 
 # ============================================================
 # TOKEN CONFIG
@@ -37,7 +36,7 @@ COINGECKO_IDS = {
     "XRP": "ripple",
     "ADA": "cardano",
     "DOGE": "dogecoin",
-    "MATIC": "polygon",
+    "MATIC": "matic-network",
     "DOT": "polkadot",
     "LINK": "chainlink",
     "TRX": "tron",
@@ -67,10 +66,9 @@ UTILITY_SCORES = {
     "ADA": {"utility_score": 60, "summary": "Research-driven chain with slower adoption."},
     "DOGE": {"utility_score": 30, "summary": "High meme power but limited real utility."},
     "MATIC": {"utility_score": 80, "summary": "Scaling chain used in many real dApps."},
-    "DOT": {"utility_score": 78, "summary": "Focused on interoperability and parachains."},
+    "DOT": {"utility_score": 78, "summary": "Interoperability-focused ecosystem."},
     "LINK": {"utility_score": 90, "summary": "Leading oracle system connecting real-world data."},
 }
-
 
 # ============================================================
 # ROOT
@@ -93,7 +91,6 @@ def root():
         "status": "online",
     }
 
-
 # ============================================================
 # SUPPORTED TOKENS ENDPOINTS
 # ============================================================
@@ -107,7 +104,6 @@ def supported_price_tokens():
 def supported_utility_tokens():
     return {"supported_utility_tokens": list(UTILITY_SCORES.keys())}
 
-
 # ============================================================
 # HELLO ENDPOINT
 # ============================================================
@@ -115,7 +111,6 @@ def supported_utility_tokens():
 @app.get("/hello/{name}", tags=["General"], summary="Say hello")
 def say_hello(name: str):
     return {"message": f"Hello {name}! 👋", "api": "AstraScout Crypto API"}
-
 
 # ============================================================
 # UTILITY SCORE ENDPOINT
@@ -138,9 +133,8 @@ def get_utility_score(symbol: str):
         "summary": "Unknown token — no utility data available.",
     }
 
-
 # ============================================================
-# PRICE ALL TOKENS (THIS MUST COME BEFORE SINGLE PRICE)
+# PRICE ALL TOKENS (MOET BOVEN SINGLE PRICE STAAN)
 # ============================================================
 
 @app.get("/price/all", tags=["Prices"], summary="Get USD prices for all supported tokens")
@@ -159,7 +153,6 @@ async def get_all_prices():
         sym: {"price_usd": data.get(cid, {}).get("usd")}
         for sym, cid in COINGECKO_IDS.items()
     }
-
 
 # ============================================================
 # PRICE SINGLE TOKEN
