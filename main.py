@@ -47,6 +47,7 @@ COINGECKO_IDS = {
     "MATIC": "polygon",
     "DOT": "polkadot"
 }
+
 }
 
 @app.get("/price/{symbol}")
