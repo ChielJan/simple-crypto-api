@@ -1,16 +1,15 @@
+from fastapi import FastAPI, Path
+import httpx
+import asyncio
 
----
-
-## 🔗 Key Endpoints
-- `GET /price/{symbol}` – price & source for one token  
-- `GET /price/all` – prices & sources for all 26 tokens  
-- `GET /utility-score/{symbol}` – utility score + summary  
-- `GET /supported/price` – list of supported price tokens  
-- `GET /supported/utility` – list of supported utility tokens  
-
-Built step-by-step with **AstraScout** 🚀  
-""",
-    version="1.6.1",
+app = FastAPI(
+    title="AstraScout Crypto API",
+    description=(
+        "Multi-source crypto price + utility API.\n\n"
+        "Sources used (in order): CoinGecko, Binance, CryptoCompare, CoinPaprika.\n"
+        "Provides USD prices for 26 major tokens and simple utility scores for 10 tokens."
+    ),
+    version="1.6.2",
 )
 
 # ============================================================
@@ -95,7 +94,6 @@ UTILITY_SCORES = {
     "LINK": {"utility_score": 90, "summary": "Top oracle provider."},
 }
 
-
 # ============================================================
 # SOURCE FETCHERS
 # ============================================================
@@ -106,13 +104,14 @@ async def fetch_coingecko(symbol: str):
         for cid in ids:
             try:
                 r = await client.get(
-                    f"https://api.coingecko.com/api/v3/simple/price?ids={cid}&vs_currencies=usd",
-                    timeout=5
+                    f"https://api.coingecko.com/api/v3/simple/price"
+                    f"?ids={cid}&vs_currencies=usd",
+                    timeout=5,
                 )
                 data = r.json()
                 if cid in data and "usd" in data[cid]:
                     return data[cid]["usd"], "coingecko"
-            except:
+            except Exception:
                 continue
     return None, None
 
@@ -125,12 +124,12 @@ async def fetch_binance(symbol: str):
         async with httpx.AsyncClient() as client:
             r = await client.get(
                 f"https://api.binance.com/api/v3/ticker/price?symbol={sym}",
-                timeout=5
+                timeout=5,
             )
             data = r.json()
             if "price" in data:
                 return float(data["price"]), "binance"
-    except:
+    except Exception:
         return None, None
     return None, None
 
@@ -141,13 +140,14 @@ async def fetch_cryptocompare(symbol: str):
         for s in symbols:
             try:
                 r = await client.get(
-                    f"https://min-api.cryptocompare.com/data/price?fsym={s}&tsyms=USD",
+                    f"https://min-api.cryptocompare.com/data/price"
+                    f"?fsym={s}&tsyms=USD",
                     timeout=5,
                 )
                 data = r.json()
                 if "USD" in data:
                     return float(data["USD"]), "cryptocompare"
-            except:
+            except Exception:
                 continue
     return None, None
 
@@ -156,19 +156,17 @@ async def fetch_paprika(symbol: str):
     paprika_id = PAPRIKA_IDS.get(symbol)
     if not paprika_id:
         return None, None
-
     try:
         async with httpx.AsyncClient() as client:
             r = await client.get(
                 f"https://api.coinpaprika.com/v1/tickers/{paprika_id}",
-                timeout=5
+                timeout=5,
             )
             data = r.json()
             if "quotes" in data and "USD" in data["quotes"]:
                 return float(data["quotes"]["USD"]["price"]), "coinpaprika"
-    except:
+    except Exception:
         return None, None
-
     return None, None
 
 
@@ -177,16 +175,15 @@ async def fetch_paprika(symbol: str):
 # ============================================================
 
 async def get_price(symbol: str):
-    for fetcher in [
+    for fetcher in (
         fetch_coingecko,
         fetch_binance,
         fetch_cryptocompare,
         fetch_paprika,
-    ]:
+    ):
         price, source = await fetcher(symbol)
         if price is not None:
             return price, source
-
     return None, None
 
 
@@ -219,11 +216,7 @@ def hello(name: str):
     return {"message": f"Hello {name} 👋"}
 
 
-@app.get(
-    "/price/all",
-    summary="Get prices for all tokens",
-    description="Returns USD prices and data source for each supported token."
-)
+@app.get("/price/all", summary="Get prices for all supported tokens")
 async def price_all():
     tasks = {sym: asyncio.create_task(get_price(sym)) for sym in COINGECKO_IDS}
     out = {}
@@ -236,7 +229,6 @@ async def price_all():
 @app.get(
     "/price/{symbol}",
     summary="Get price for a single token",
-    description="Returns USD price and source for tokens like BTC, ETH, SOL, MATIC, etc."
 )
 async def price_single(
     symbol: str = Path(..., regex=r"^[A-Za-z0-9]{2,10}$")
@@ -252,7 +244,6 @@ async def price_single(
 @app.get(
     "/utility-score/{symbol}",
     summary="Get utility score for major tokens",
-    description="Returns a simple 0–100 utility score with a short explanation."
 )
 def utility(symbol: str):
     sym = symbol.upper()
