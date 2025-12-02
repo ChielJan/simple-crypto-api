@@ -34,9 +34,19 @@ def get_utility_score(symbol: str):
 
 # ⭐ Hier komt de echte waarde: prijs endpoint
 COINGECKO_IDS = {
+COINGECKO_IDS = {
     "BTC": "bitcoin",
     "ETH": "ethereum",
-    "SOL": "solana"
+    "SOL": "solana",
+    "BNB": "binancecoin",
+    "XRP": "ripple",
+    "ADA": "cardano",
+    "DOGE": "dogecoin",
+    "AVAX": "avalanche-2",
+    "LINK": "chainlink",
+    "MATIC": "polygon",
+    "DOT": "polkadot"
+}
 }
 
 @app.get("/price/{symbol}")
