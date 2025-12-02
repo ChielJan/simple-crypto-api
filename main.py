@@ -36,7 +36,7 @@ COINGECKO_IDS = {
     "XRP": "ripple",
     "ADA": "cardano",
     "DOGE": "dogecoin",
-    "MATIC": "matic-network",
+    "MATIC": "matic-network,matic,polygon-ecosystem-token",
     "DOT": "polkadot",
     "LINK": "chainlink",
     "TRX": "tron",
