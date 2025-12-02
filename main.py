@@ -4,7 +4,7 @@ import httpx
 app = FastAPI(
     title="AstraScout Crypto API",
     description="Crypto price + utility API built step-by-step 🚀",
-    version="1.2.0",
+    version="1.2.1",
 )
 
 # ------------------------------------
@@ -92,6 +92,29 @@ COINGECKO_IDS = {
 
 
 # ------------------------------------
+# PRICE FOR ALL TOKENS (EERST!)
+# ------------------------------------
+@app.get("/price/all")
+async def get_all_prices():
+    ids_str = ",".join(COINGECKO_IDS.values())
+    url = f"https://api.coingecko.com/api/v3/simple/price?ids={ids_str}&vs_currencies=usd"
+
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(url, timeout=10)
+            data = r.json()
+    except Exception as e:
+        return {"error": f"Failed to fetch prices: {str(e)}"}
+
+    result = {}
+    for sym, cg_id in COINGECKO_IDS.items():
+        price = data.get(cg_id, {}).get("usd", None)
+        result[sym] = {"price_usd": price}
+
+    return result
+
+
+# ------------------------------------
 # PRICE FOR SINGLE TOKEN
 # ------------------------------------
 @app.get("/price/{symbol}")
@@ -115,26 +138,3 @@ async def get_price(symbol: str):
         "token": sym,
         "price_usd": data.get(cg_id, {}).get("usd", None)
     }
-
-
-# ------------------------------------
-# PRICE FOR ALL TOKENS
-# ------------------------------------
-@app.get("/price/all")
-async def get_all_prices():
-    ids_str = ",".join(COINGECKO_IDS.values())
-    url = f"https://api.coingecko.com/api/v3/simple/price?ids={ids_str}&vs_currencies=usd"
-
-    try:
-        async with httpx.AsyncClient() as client:
-            r = await client.get(url, timeout=10)
-            data = r.json()
-    except Exception as e:
-        return {"error": f"Failed to fetch prices: {str(e)}"}
-
-    result = {}
-    for sym, cg_id in COINGECKO_IDS.items():
-        price = data.get(cg_id, {}).get("usd", None)
-        result[sym] = {"price_usd": price}
-
-    return result
