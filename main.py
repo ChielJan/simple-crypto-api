@@ -1,21 +1,12 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Path
 import httpx
 
 app = FastAPI(
     title="AstraScout Crypto API",
-    description="""
-A lightweight crypto data API built step-by-step.  
-Provides live USD prices + simple utility scoring for selected tokens.  
-
-🚀 Built for learning, experimenting, and creating — free to use!  
-Maintained by **AstraScout**, exploring Web3 with transparency and insight.
-""",
-    version="1.2.1"
+    description="Lightweight crypto price + utility API built step-by-step 🚀",
+    version="1.2.2",
 )
 
-# -------------------------------------------
-# Supported tokens
-# -------------------------------------------
 COINGECKO_IDS = {
     "BTC": "bitcoin",
     "ETH": "ethereum",
@@ -29,91 +20,63 @@ COINGECKO_IDS = {
     "LINK": "chainlink"
 }
 
-UTILITY_SCORES = {
-    "BTC": 95,
-    "ETH": 100,
-    "SOL": 88,
-    "BNB": 85,
-    "XRP": 70,
-    "ADA": 60,
-    "DOGE": 25,
-    "DOT": 78,
-    "AVAX": 82,
-    "LINK": 90
-}
 
-# -------------------------------------------
-# Root
-# -------------------------------------------
-@app.get("/", tags=["General"], summary="Root Endpoint")
+# ---------------------------
+# ROOT
+# ---------------------------
+@app.get("/")
 def root():
     return {
-        "message": "Welcome to AstraScout Crypto API 🚀",
-        "endpoints": ["/price/{symbol}", "/price/all", "/utility-score/{symbol}"],
-        "status": "online"
-    }
-
-# -------------------------------------------
-# Say Hello
-# -------------------------------------------
-@app.get("/hello/{name}", tags=["General"], summary="Say Hello")
-def hello(name: str):
-    return {"message": f"Hello {name} 👋", "api": "AstraScout Crypto API"}
-
-# -------------------------------------------
-# Utility Score
-# -------------------------------------------
-@app.get("/utility-score/{symbol}", tags=["Utility"], summary="Get Utility Score")
-def utility_score(symbol: str):
-    sym = symbol.upper()
-    if sym not in UTILITY_SCORES:
-        return {"error": f"Token '{sym}' not supported."}
-    return {"token": sym, "utility_score": UTILITY_SCORES[sym]}
-
-# -------------------------------------------
-# Price for single token
-# -------------------------------------------
-@app.get("/price/{symbol}", tags=["Prices"], summary="Get Price")
-async def get_price(symbol: str):
-    sym = symbol.upper()
-
-    if sym not in COINGECKO_IDS:
-        return {"error": f"Token '{sym}' not supported yet."}
-
-    cg_id = COINGECKO_IDS[sym]
-    url = f"https://api.coingecko.com/api/v3/simple/price?ids={cg_id}&vs_currencies=usd"
-
-    try:
-        async with httpx.AsyncClient() as client:
-            r = await client.get(url, timeout=10)
-            data = r.json()
-    except Exception as e:
-        return {"error": f"Failed to fetch price: {str(e)}"}
-
-    return {
-        "token": sym,
-        "price_usd": data.get(cg_id, {}).get("usd", None)
+        "message": "AstraScout Crypto API Online 🚀",
+        "endpoints": ["/price/all", "/price/{symbol}", "/utility-score/{symbol}"],
     }
 
 
-# -------------------------------------------
-# Price for ALL tokens
-# -------------------------------------------
-@app.get("/price/all", tags=["Prices"], summary="Get All Prices")
-async def get_all_prices():
+# ---------------------------
+# PRICE ALL — FIXED
+# ---------------------------
+@app.get("/price/all", tags=["Prices"], summary="Get all supported token prices")
+async def price_all():
     ids_str = ",".join(COINGECKO_IDS.values())
     url = f"https://api.coingecko.com/api/v3/simple/price?ids={ids_str}&vs_currencies=usd"
 
     try:
         async with httpx.AsyncClient() as client:
-            r = await client.get(url, timeout=10)
-            data = r.json()
+            resp = await client.get(url)
+            data = resp.json()
     except Exception as e:
-        return {"error": f"Failed to fetch prices: {str(e)}"}
+        return {"error": f"Failed to fetch prices: {e}"}
 
-    result = {}
-    for sym, cg_id in COINGECKO_IDS.items():
-        price = data.get(cg_id, {}).get("usd", None)
-        result[sym] = {"price_usd": price}
+    return {
+        sym: {"price_usd": data.get(cid, {}).get("usd")}
+        for sym, cid in COINGECKO_IDS.items()
+    }
 
-    return result
+
+# ---------------------------
+# PRICE SINGLE — Regex FIX
+# ---------------------------
+@app.get(
+    "/price/{symbol}",
+    tags=["Prices"],
+    summary="Get price of a single token"
+)
+async def price_single(
+    symbol: str = Path(..., regex="^[A-Za-z]{2,6}$")
+):
+    sym = symbol.upper()
+
+    if sym not in COINGECKO_IDS:
+        return {"error": f"Token '{sym}' not supported."}
+
+    cid = COINGECKO_IDS[sym]
+    url = f"https://api.coingecko.com/api/v3/simple/price?ids={cid}&vs_currencies=usd"
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(url)
+            data = resp.json()
+    except Exception as e:
+        return {"error": f"Failed to fetch price: {e}"}
+
+    return {"token": sym, "price_usd": data.get(cid, {}).get("usd")}
