@@ -21,13 +21,14 @@ BTC, ETH, SOL, BNB, XRP, ADA, DOGE, MATIC, DOT, LINK
 Built and maintained by **AstraScout** ⚡  
 Ideal for testing, bots, dashboards, education & experiments.
 """,
-    version="1.4.1",
+    version="1.4.2",
 )
 
 # ============================================================
-# TOKEN CONFIG
+# TOKEN CONFIG (with fallback IDs)
 # ============================================================
 
+# Fallback IDs separated by comma if needed
 COINGECKO_IDS = {
     "BTC": "bitcoin",
     "ETH": "ethereum",
@@ -99,13 +100,12 @@ def root():
 def supported_price_tokens():
     return {"supported_price_tokens": list(COINGECKO_IDS.keys())}
 
-
 @app.get("/supported/utility", tags=["General"], summary="List all supported utility tokens")
 def supported_utility_tokens():
     return {"supported_utility_tokens": list(UTILITY_SCORES.keys())}
 
 # ============================================================
-# HELLO ENDPOINT
+# HELLO
 # ============================================================
 
 @app.get("/hello/{name}", tags=["General"], summary="Say hello")
@@ -121,25 +121,25 @@ def get_utility_score(symbol: str):
     sym = symbol.upper()
 
     if sym in UTILITY_SCORES:
-        return {
-            "token": sym,
-            "utility_score": UTILITY_SCORES[sym]["utility_score"],
-            "summary": UTILITY_SCORES[sym]["summary"],
-        }
+        data = UTILITY_SCORES[sym]
+        return {"token": sym, "utility_score": data["utility_score"], "summary": data["summary"]}
 
-    return {
-        "token": sym,
-        "utility_score": 50,
-        "summary": "Unknown token — no utility data available.",
-    }
+    return {"token": sym, "utility_score": 50, "summary": "Unknown token — no utility data available."}
 
 # ============================================================
-# PRICE ALL TOKENS (MOET BOVEN SINGLE PRICE STAAN)
+# PRICE ALL — with fallback support
 # ============================================================
 
 @app.get("/price/all", tags=["Prices"], summary="Get USD prices for all supported tokens")
 async def get_all_prices():
-    ids_str = ",".join(COINGECKO_IDS.values())
+
+    # Collect all fallback IDs in one list
+    all_ids = []
+    for cid in COINGECKO_IDS.values():
+        all_ids.extend(cid.split(","))
+
+    ids_str = ",".join(all_ids)
+
     url = f"https://api.coingecko.com/api/v3/simple/price?ids={ids_str}&vs_currencies=usd"
 
     try:
@@ -149,13 +149,19 @@ async def get_all_prices():
     except Exception as e:
         return {"error": f"Failed to fetch prices: {e}"}
 
-    return {
-        sym: {"price_usd": data.get(cid, {}).get("usd")}
-        for sym, cid in COINGECKO_IDS.items()
-    }
+    result = {}
+    for sym, cids in COINGECKO_IDS.items():
+        for cid in cids.split(","):
+            if cid in data and "usd" in data[cid]:
+                result[sym] = {"price_usd": data[cid]["usd"]}
+                break
+        else:
+            result[sym] = {"price_usd": None}
+
+    return result
 
 # ============================================================
-# PRICE SINGLE TOKEN
+# PRICE SINGLE — with fallback support
 # ============================================================
 
 @app.get("/price/{symbol}", tags=["Prices"], summary="Get USD price for a single token")
@@ -167,14 +173,19 @@ async def get_price(
     if sym not in COINGECKO_IDS:
         return {"error": f"Token '{sym}' not supported."}
 
-    cid = COINGECKO_IDS[sym]
-    url = f"https://api.coingecko.com/api/v3/simple/price?ids={cid}&vs_currencies=usd"
+    candidate_ids = COINGECKO_IDS[sym].split(",")
 
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(url, timeout=10)
-            data = resp.json()
-    except Exception as e:
-        return {"error": f"Failed to fetch price: {e}"}
+    for cid in candidate_ids:
+        url = f"https://api.coingecko.com/api/v3/simple/price?ids={cid}&vs_currencies=usd"
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(url, timeout=10)
+                data = resp.json()
 
-    return {"token": sym, "price_usd": data.get(cid, {}).get("usd")}
+            if cid in data and "usd" in data[cid]:
+                return {"token": sym, "price_usd": data[cid]["usd"]}
+
+        except:
+            continue
+
+    return {"token": sym, "price_usd": None}
