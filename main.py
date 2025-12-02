@@ -3,69 +3,19 @@ import httpx
 
 app = FastAPI(
     title="AstraScout Crypto API",
-    description="Crypto price + utility API built step-by-step 🚀",
-    version="1.2.1",
+    description="""
+A lightweight crypto data API built step-by-step.  
+Provides live USD prices + simple utility scoring for selected tokens.  
+
+🚀 Built for learning, experimenting, and creating — free to use!  
+Maintained by **AstraScout**, exploring Web3 with transparency and insight.
+""",
+    version="1.2.1"
 )
 
-# ------------------------------------
-# ROOT
-# ------------------------------------
-@app.get("/")
-def root():
-    return {
-        "message": "AstraScout Crypto API Online 🚀",
-        "endpoints": [
-            "/hello/{name}",
-            "/utility-score/{symbol}",
-            "/price/{symbol}",
-            "/price/all"
-        ]
-    }
-
-
-# ------------------------------------
-# HELLO ENDPOINT
-# ------------------------------------
-@app.get("/hello/{name}")
-def say_hello(name: str):
-    return {"message": f"Hello {name}! 👋"}
-
-
-# ------------------------------------
-# SIMPLE UTILITY SCORE ENDPOINT
-# ------------------------------------
-UTILITY_SCORES = {
-    "BTC": {"utility_score": 88, "summary": "Strong, secure store of value used globally."},
-    "ETH": {"utility_score": 92, "summary": "Smart contract leader powering DeFi & NFTs."},
-    "SOL": {"utility_score": 85, "summary": "Fast, scalable chain with huge ecosystem growth."},
-    "BNB": {"utility_score": 80, "summary": "Exchange chain with massive user activity."},
-    "DOGE": {"utility_score": 55, "summary": "Meme-driven, limited utility but huge community."},
-    "ADA": {"utility_score": 60, "summary": "Strong vision, slower real-world adoption."},
-    "XRP": {"utility_score": 78, "summary": "Fast settlement asset for cross-border payments."}
-}
-
-@app.get("/utility-score/{symbol}")
-def get_utility_score(symbol: str):
-    sym = symbol.upper()
-
-    if sym in UTILITY_SCORES:
-        data = UTILITY_SCORES[sym]
-        return {
-            "token": sym,
-            "utility_score": data["utility_score"],
-            "summary": data["summary"]
-        }
-
-    return {
-        "token": sym,
-        "utility_score": 50,
-        "summary": "Unknown token — no utility data available."
-    }
-
-
-# ------------------------------------
-# COINGECKO TOKEN MAPPINGS
-# ------------------------------------
+# -------------------------------------------
+# Supported tokens
+# -------------------------------------------
 COINGECKO_IDS = {
     "BTC": "bitcoin",
     "ETH": "ethereum",
@@ -74,50 +24,56 @@ COINGECKO_IDS = {
     "XRP": "ripple",
     "ADA": "cardano",
     "DOGE": "dogecoin",
-    "AVAX": "avalanche-2",
     "DOT": "polkadot",
-    "LINK": "chainlink",
-    "MATIC": "polygon",
-    "TRX": "tron",
-    "ATOM": "cosmos",
-    "UNI": "uniswap",
-    "LTC": "litecoin",
-    "ETC": "ethereum-classic",
-    "APT": "aptos",
-    "ARB": "arbitrum",
-    "OP": "optimism",
-    "FTM": "fantom",
-    "NEAR": "near",
+    "AVAX": "avalanche-2",
+    "LINK": "chainlink"
 }
 
+UTILITY_SCORES = {
+    "BTC": 95,
+    "ETH": 100,
+    "SOL": 88,
+    "BNB": 85,
+    "XRP": 70,
+    "ADA": 60,
+    "DOGE": 25,
+    "DOT": 78,
+    "AVAX": 82,
+    "LINK": 90
+}
 
-# ------------------------------------
-# PRICE FOR ALL TOKENS (EERST!)
-# ------------------------------------
-@app.get("/price/all")
-async def get_all_prices():
-    ids_str = ",".join(COINGECKO_IDS.values())
-    url = f"https://api.coingecko.com/api/v3/simple/price?ids={ids_str}&vs_currencies=usd"
+# -------------------------------------------
+# Root
+# -------------------------------------------
+@app.get("/", tags=["General"], summary="Root Endpoint")
+def root():
+    return {
+        "message": "Welcome to AstraScout Crypto API 🚀",
+        "endpoints": ["/price/{symbol}", "/price/all", "/utility-score/{symbol}"],
+        "status": "online"
+    }
 
-    try:
-        async with httpx.AsyncClient() as client:
-            r = await client.get(url, timeout=10)
-            data = r.json()
-    except Exception as e:
-        return {"error": f"Failed to fetch prices: {str(e)}"}
+# -------------------------------------------
+# Say Hello
+# -------------------------------------------
+@app.get("/hello/{name}", tags=["General"], summary="Say Hello")
+def hello(name: str):
+    return {"message": f"Hello {name} 👋", "api": "AstraScout Crypto API"}
 
-    result = {}
-    for sym, cg_id in COINGECKO_IDS.items():
-        price = data.get(cg_id, {}).get("usd", None)
-        result[sym] = {"price_usd": price}
+# -------------------------------------------
+# Utility Score
+# -------------------------------------------
+@app.get("/utility-score/{symbol}", tags=["Utility"], summary="Get Utility Score")
+def utility_score(symbol: str):
+    sym = symbol.upper()
+    if sym not in UTILITY_SCORES:
+        return {"error": f"Token '{sym}' not supported."}
+    return {"token": sym, "utility_score": UTILITY_SCORES[sym]}
 
-    return result
-
-
-# ------------------------------------
-# PRICE FOR SINGLE TOKEN
-# ------------------------------------
-@app.get("/price/{symbol}")
+# -------------------------------------------
+# Price for single token
+# -------------------------------------------
+@app.get("/price/{symbol}", tags=["Prices"], summary="Get Price")
 async def get_price(symbol: str):
     sym = symbol.upper()
 
@@ -138,3 +94,26 @@ async def get_price(symbol: str):
         "token": sym,
         "price_usd": data.get(cg_id, {}).get("usd", None)
     }
+
+
+# -------------------------------------------
+# Price for ALL tokens
+# -------------------------------------------
+@app.get("/price/all", tags=["Prices"], summary="Get All Prices")
+async def get_all_prices():
+    ids_str = ",".join(COINGECKO_IDS.values())
+    url = f"https://api.coingecko.com/api/v3/simple/price?ids={ids_str}&vs_currencies=usd"
+
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(url, timeout=10)
+            data = r.json()
+    except Exception as e:
+        return {"error": f"Failed to fetch prices: {str(e)}"}
+
+    result = {}
+    for sym, cg_id in COINGECKO_IDS.items():
+        price = data.get(cg_id, {}).get("usd", None)
+        result[sym] = {"price_usd": price}
+
+    return result
