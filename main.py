@@ -5,24 +5,21 @@ import asyncio
 app = FastAPI(
     title="AstraScout Crypto API",
     description="""
-A professional multi-source crypto price + utility API 🚀  
+Multi-source crypto price + utility API 🚀  
 
-Sources used (in order):
+Sources (in order):
 1. CoinGecko (primary)
-2. Binance (fallback)
-3. CryptoCompare (fallback)
-4. CoinPaprika (fallback — guarantees a price)
-
-Designed & maintained by AstraScout.
+2. Binance
+3. CryptoCompare
+4. CoinPaprika (last fallback)
 """,
-    version="1.6.0",
+    version="1.6.1",
 )
 
 # ============================================================
 # TOKEN MAPS
 # ============================================================
 
-# CoinGecko IDs (with fallbacks)
 COINGECKO_IDS = {
     "BTC": "bitcoin",
     "ETH": "ethereum",
@@ -48,17 +45,45 @@ COINGECKO_IDS = {
     "XLM": "stellar",
     "ICP": "internet-computer",
     "FIL": "filecoin",
-    "EGLD": "multiversx",  # CG ID for EGLD is "multiversx"
+    "EGLD": "multiversx",
     "AAVE": "aave",
 }
 
-# Binance symbols
 BINANCE_SYMBOLS = {symbol: symbol + "USDT" for symbol in COINGECKO_IDS}
 
-# CryptoCompare mapping (your EGLD=EGLD,ELGD rule)
 CRYPTOCOMPARE_MAP = {
     **{symbol: symbol for symbol in COINGECKO_IDS},
     "EGLD": "EGLD,ELGD",
+}
+
+# CoinPaprika exact ticker IDs
+PAPRIKA_IDS = {
+    "BTC": "btc-bitcoin",
+    "ETH": "eth-ethereum",
+    "SOL": "sol-solana",
+    "BNB": "bnb-binance-coin",
+    "XRP": "xrp-xrp",
+    "ADA": "ada-cardano",
+    "DOGE": "doge-dogecoin",
+    "MATIC": "matic-polygon",
+    "DOT": "dot-polkadot",
+    "LINK": "link-chainlink",
+    "TRX": "trx-tron",
+    "ATOM": "atom-cosmos",
+    "AVAX": "avax-avalanche",
+    "LTC": "ltc-litecoin",
+    "ETC": "etc-ethereum-classic",
+    "UNI": "uni-uniswap",
+    "APT": "apt-aptos",
+    "ARB": "arb-arbitrum",
+    "OP": "op-optimism",
+    "FTM": "ftm-fantom",
+    "NEAR": "near-near-protocol",
+    "XLM": "xlm-stellar",
+    "ICP": "icp-internet-computer",
+    "FIL": "fil-filecoin",
+    "EGLD": "egld-elrond-erd-2",
+    "AAVE": "aave-aave",
 }
 
 UTILITY_SCORES = {
@@ -128,11 +153,14 @@ async def fetch_cryptocompare(symbol: str):
 
 
 async def fetch_paprika(symbol: str):
+    paprika_id = PAPRIKA_IDS.get(symbol)
+    if not paprika_id:
+        return None, None
+
     try:
         async with httpx.AsyncClient() as client:
-            # Paprika uses lowercase id lookup by /tickers/{id}
             r = await client.get(
-                f"https://api.coinpaprika.com/v1/tickers/{symbol.lower()}",
+                f"https://api.coinpaprika.com/v1/tickers/{paprika_id}",
                 timeout=5,
             )
             data = r.json()
@@ -144,26 +172,22 @@ async def fetch_paprika(symbol: str):
 
 
 # ============================================================
-# PRICE AGGREGATOR (4 sources)
+# PRICE AGGREGATOR
 # ============================================================
 
 async def get_price(symbol: str):
-    # 1. CoinGecko
     price, source = await fetch_coingecko(symbol)
     if price is not None:
         return price, source
 
-    # 2. Binance
     price, source = await fetch_binance(symbol)
     if price is not None:
         return price, source
 
-    # 3. CryptoCompare
     price, source = await fetch_cryptocompare(symbol)
     if price is not None:
         return price, source
 
-    # 4. CoinPaprika (guaranteed fallback)
     price, source = await fetch_paprika(symbol)
     if price is not None:
         return price, source
@@ -200,9 +224,7 @@ def hello(name: str):
     return {"message": f"Hello {name} 👋"}
 
 
-# ============================================================
-# PRICE ALL (must be ABOVE single-price)
-# ============================================================
+# ---------- PRICE ALL (boven single) ----------
 
 @app.get("/price/all")
 async def price_all():
@@ -214,9 +236,7 @@ async def price_all():
     return out
 
 
-# ============================================================
-# PRICE SINGLE
-# ============================================================
+# ---------- PRICE SINGLE ----------
 
 @app.get("/price/{symbol}")
 async def price_single(
@@ -227,13 +247,10 @@ async def price_single(
         return {"error": f"Token '{sym}' not supported."}
 
     price, source = await get_price(sym)
-
     return {"token": sym, "price_usd": price, "source": source}
 
 
-# ============================================================
-# UTILITY SCORE
-# ============================================================
+# ---------- UTILITY ----------
 
 @app.get("/utility-score/{symbol}")
 def utility(symbol: str):
