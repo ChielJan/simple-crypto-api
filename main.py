@@ -1,20 +1,28 @@
 from fastapi import FastAPI, Path
 import httpx
 import asyncio
+import time
 
 app = FastAPI(
     title="AstraScout Crypto API",
     description=(
         "Multi-source crypto price + utility API.\n\n"
-        "Sources used (in order): CoinGecko, Binance, CryptoCompare, CoinPaprika.\n"
-        "Provides USD prices for 26 major tokens and simple utility scores for 10 tokens."
+        "Sources (in order): CoinGecko, Binance, CryptoCompare, CoinPaprika.\n"
+        "Provides USD prices for 26 major tokens and simple utility scores for 10 tokens.\n"
+        "Includes caching and fallback to minimise null prices."
     ),
-    version="1.6.2",
+    version="1.7.1",
 )
 
-# ============================================================
+# ===========================
+# CONFIG
+# ===========================
+
+PRICE_TTL_SECONDS = 120  # cache geldigheid in seconden
+
+# ===========================
 # TOKEN MAPS
-# ============================================================
+# ===========================
 
 COINGECKO_IDS = {
     "BTC": "bitcoin",
@@ -94,9 +102,44 @@ UTILITY_SCORES = {
     "LINK": {"utility_score": 90, "summary": "Top oracle provider."},
 }
 
-# ============================================================
+# ===========================
+# IN-MEMORY CACHE
+# ===========================
+
+# Voorbeeld: { "BTC": {"price": 12345.0, "source": "coingecko", "ts": 1710000000.0} }
+PRICE_CACHE: dict[str, dict] = {}
+
+
+def get_cached_price(symbol: str):
+    """Geef cached prijs als die nog 'vers' is, anders None."""
+    entry = PRICE_CACHE.get(symbol)
+    if not entry:
+        return None, None
+    age = time.time() - entry["ts"]
+    if age <= PRICE_TTL_SECONDS:
+        return entry["price"], entry["source"]
+    return None, None
+
+
+def get_any_cached_price(symbol: str):
+    """Geef cached prijs ongeacht leeftijd (als laatste redmiddel)."""
+    entry = PRICE_CACHE.get(symbol)
+    if not entry:
+        return None, None
+    return entry["price"], entry["source"]
+
+
+def set_cached_price(symbol: str, price: float, source: str):
+    PRICE_CACHE[symbol] = {
+        "price": price,
+        "source": source,
+        "ts": time.time(),
+    }
+
+
+# ===========================
 # SOURCE FETCHERS
-# ============================================================
+# ===========================
 
 async def fetch_coingecko(symbol: str):
     ids = COINGECKO_IDS[symbol].split(",")
@@ -170,11 +213,23 @@ async def fetch_paprika(symbol: str):
     return None, None
 
 
-# ============================================================
+# ===========================
 # PRICE AGGREGATOR
-# ============================================================
+# ===========================
 
 async def get_price(symbol: str):
+    """
+    1. Probeer verse cache
+    2. Probeer live bronnen (4 stuks)
+    3. Als alles faalt maar er is ooit een cache geweest → gebruik laatste bekende
+    """
+
+    # 1. Vers uit cache?
+    cached_price, cached_source = get_cached_price(symbol)
+    if cached_price is not None:
+        return cached_price, cached_source
+
+    # 2. Live proberen (sequentieel, om rate limits te beperken)
     for fetcher in (
         fetch_coingecko,
         fetch_binance,
@@ -183,13 +238,20 @@ async def get_price(symbol: str):
     ):
         price, source = await fetcher(symbol)
         if price is not None:
+            set_cached_price(symbol, price, source)
             return price, source
+
+    # 3. Laatste redmiddel: oude cache (kan ouder zijn dan TTL)
+    stale_price, stale_source = get_any_cached_price(symbol)
+    if stale_price is not None:
+        return stale_price, stale_source
+
     return None, None
 
 
-# ============================================================
+# ===========================
 # ENDPOINTS
-# ============================================================
+# ===========================
 
 @app.get("/", summary="API status & supported tokens")
 def root():
@@ -218,10 +280,10 @@ def hello(name: str):
 
 @app.get("/price/all", summary="Get prices for all supported tokens")
 async def price_all():
-    tasks = {sym: asyncio.create_task(get_price(sym)) for sym in COINGECKO_IDS}
     out = {}
-    for sym, task in tasks.items():
-        price, source = await task
+    # sequentieel i.p.v. 26 parallel requests → minder rate limiting
+    for sym in COINGECKO_IDS:
+        price, source = await get_price(sym)
         out[sym] = {"price_usd": price, "source": source}
     return out
 
