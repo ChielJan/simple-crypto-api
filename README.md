@@ -1,152 +1,136 @@
-# 🚀 AstraScout Crypto API  
-A lightweight, multi-source cryptocurrency price API with zero-null fallback logic.
+🚀 AstraScout Crypto API
+
+A lightweight, multi-source cryptocurrency price API with smart fallback and caching.
 
 The AstraScout Crypto API provides fast and reliable USD price data for 26 major cryptocurrencies using an intelligent multi-source aggregator:
 
-1. CoinGecko (primary)  
-2. Binance  
-3. CryptoCompare  
-4. CoinPaprika (final fallback → no null values)
+CoinGecko (primary)
+
+Binance
+
+CryptoCompare
+
+CoinPaprika (final fallback)
+
+On top of that, the API uses in-memory caching and a “last known price” fallback to minimise null responses and smooth over short provider outages or rate limits.
 
 It also includes simple utility scores for 10 well-known tokens.
 
-This API is designed to be fast, practical, and extremely stable — perfect for bots, dashboards, Web3 apps, or educational projects.
+This API is designed to be fast, practical, and highly stable — perfect for bots, dashboards, Web3 apps, or educational projects.
 
----
+✨ Features
 
-## ✨ Features
+Live USD prices for 26 cryptocurrencies
 
-- Live USD prices for 26 cryptocurrencies  
-- Automatic multi-source fallback (4 providers)  
-- Zero null values — always returns a price  
-- Utility score endpoint  
-- High performance (async)  
-- No API key required  
-- Small, clean JSON payloads  
-- Developer-friendly endpoints  
+Automatic multi-source fallback across 4 providers
 
----
+Caching with a short TTL to reduce rate limits
 
-## 🪙 Supported Price Tokens (26)
+Fallback to the last known price if all live sources fail
 
-BTC, ETH, SOL, BNB, XRP, ADA, DOGE, MATIC, DOT, LINK,  
-TRX, ATOM, AVAX, LTC, ETC, UNI, APT, ARB, OP, FTM,  
+Utility score endpoint for 10 major tokens
+
+High performance (async FastAPI)
+
+No API key required
+
+Small, clean JSON payloads
+
+Developer-friendly endpoints
+
+Note: In rare cases (e.g. when a token has never resolved before), null may still occur.
+For all previously resolved tokens, the API returns either a fresh price or the last known price.
+
+🪙 Supported Price Tokens (26)
+
+BTC, ETH, SOL, BNB, XRP, ADA, DOGE, MATIC, DOT, LINK,
+TRX, ATOM, AVAX, LTC, ETC, UNI, APT, ARB, OP, FTM,
 NEAR, XLM, ICP, FIL, EGLD, AAVE
 
-Retrieve them via:  
+Retrieve them via:
 GET /supported/price
 
----
-
-## ⭐ Supported Utility Score Tokens (10)
+⭐ Supported Utility Score Tokens (10)
 
 BTC, ETH, SOL, BNB, XRP, ADA, DOGE, MATIC, DOT, LINK
 
-Retrieve them via:  
+Retrieve them via:
 GET /supported/utility
 
----
+📡 Endpoints
+Health & Metadata
 
-## 📡 Endpoints
-
-### Health & Metadata  
 GET /
 
-Returns API status and supported token lists.
+Get All Prices
 
----
-
-### Get Price for All Tokens  
 GET /price/all
+Returns all 26 price entries with source info.
 
-Returns a dictionary with 26 tokens, each containing for example:
+Get Price for a Single Token
 
-    {
-      "price_usd": 138.45,
-      "source": "coingecko"
-    }
-
----
-
-### Get Price for a Single Token  
 GET /price/{symbol}
+Examples: /price/BTC, /price/MATIC, /price/EGLD
 
-Examples:
+Utility Score
 
-    /price/BTC
-    /price/MATIC
-    /price/EGLD
-
----
-
-### Utility Score  
 GET /utility-score/{symbol}
 
-Returns a simple 0–100 score plus a short summary, for example:
+🧠 How the Multi-Source Fallback Works
 
-    {
-      "token": "ETH",
-      "utility_score": 100,
-      "summary": "Smart contract leader."
-    }
+For every token, the API attempts:
 
----
+CoinGecko
 
-## 🧠 How the Multi-Source Fallback Works
+Binance
 
-For every token, the API attempts to fetch the price from:
+CryptoCompare
 
-1. CoinGecko  
-2. Binance  
-3. CryptoCompare  
-4. CoinPaprika  
+CoinPaprika
 
-The first successful response is returned, including the name of the source.
+The first successful price is returned and cached.
+If all live sources fail but a cached price exists, the last known price is returned instead.
 
-This ensures:
+This system:
 
-- No null prices  
-- Minimal downtime  
-- Higher reliability than single-source APIs  
-- Ideal for bots or dashboards needing consistent data  
+Greatly reduces null values
 
----
+Avoids downtime during provider outages
 
-## 📌 Example Usage
+Makes the API more reliable than single-source feeds
 
-### Python
+Works extremely well for bots & dashboards
 
-    import requests
-    data = requests.get("https://YOUR-URL/price/BTC").json()
-    print(data)
+📌 Example Usage
 
-### JavaScript
+Python:
 
-    fetch("https://YOUR-URL/price/all")
-      .then(res => res.json())
-      .then(console.log);
+import requests
+r = requests.get("https://YOUR_BASE_URL/price/BTC").json()
+print(r)
 
----
+JavaScript:
 
-## 🚀 Deploying Yourself
+fetch("https://YOUR_BASE_URL/price/all")
+ .then(res => res.json())
+ .then(console.log)
 
-Built with:
+🚀 Tech Stack
 
-- FastAPI  
-- Python  
-- Asyncio  
-- httpx  
+Python
 
-Deploy easily on platforms like Railway, Render, Fly.io, etc.
+FastAPI
 
----
+Asyncio
 
-## 🤝 Credits
+httpx
 
-Built by AstraScout — combining Web3 curiosity with practical tools.
+In-memory caching
 
----
+🤝 Credits
 
-## 📜 License
+Built by AstraScout — combining Web3 curiosity with practical developer tools.
 
-MIT License – free to use, modify, and build upon.
+📜 License
+
+MIT License.
